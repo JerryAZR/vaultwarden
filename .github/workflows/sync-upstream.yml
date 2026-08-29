@@ -23,6 +23,8 @@ jobs:
     name: Mirror new upstream release tags
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.push-tags.outputs.tag }}
     # SYNC_TOKEN is scoped to the `release` environment
     environment: release
     permissions:
@@ -52,6 +54,7 @@ jobs:
           git fetch --no-tags upstream '+refs/tags/*:refs/tags/*'
 
       - name: Push new upstream release tags
+        id: push-tags
         run: |
           # Release tags which already exist on this fork
           # (lexical sort: `comm` requires collated input; -V ordering breaks on e.g. 1.9 vs 1.10)
@@ -74,6 +77,7 @@ jobs:
           fi
 
           TAG_TO_PUSH="$(tail -n 1 <<< "${NEW_TAGS}")"
+          echo "tag=${TAG_TO_PUSH}" >> "${GITHUB_OUTPUT}"
           {
             echo "### Synced upstream release tag"
             echo ""
@@ -85,3 +89,19 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
           echo "Pushing tag ${TAG_TO_PUSH}"
           git push origin "refs/tags/${TAG_TO_PUSH}:refs/tags/${TAG_TO_PUSH}"
+
+  # Build the release images with this fork's pipeline from main.
+  # A tag push event would execute the workflow file FROM THE TAGGED COMMIT
+  # (upstream's, gated to dani-garcia), so the build must be invoked instead.
+  release:
+    name: Build release images
+    needs: sync-tags
+    if: needs.sync-tags.outputs.tag != ''
+    permissions:
+      contents: read
+      packages: write      # push images to GHCR
+      attestations: write  # generate artifact attestations
+      id-token: write      # OIDC token for Sigstore signing
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.sync-tags.outputs.tag }}

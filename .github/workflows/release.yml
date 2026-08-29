@@ -1,20 +1,24 @@
 name: Release
 permissions: {}
 
-concurrency:
-  # Fork: apply concurrency control on this repo (was: dani-garcia/vaultwarden)
-  group: ${{ github.repository == 'JerryAZR/vaultwarden' && format('{0}-{1}', github.workflow, github.ref) || github.run_id }}
-  # Don't cancel other runs when creating a tag
-  cancel-in-progress: ${{ github.ref_type == 'branch' }}
-
+# Fork: reusable release pipeline, called by sync-upstream.yml after mirroring
+# an upstream release tag; can also be dispatched manually to rebuild a tag.
+# NOTE: tag-push triggers are pointless for this fork — a push event runs the
+# workflow file FROM THE TAGGED COMMIT (upstream's, gated to dani-garcia),
+# never this file from main.
 on:
-  push:
-    # Fork: tags only — images are built from upstream release tags,
-    # no `testing` builds from main (the fork main has no tags, which
-    # also breaks the `git describe` source-version step)
-    tags:
-      # https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
-      - '[1-2].[0-9]+.[0-9]+'
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. 1.37.2)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. 1.37.2)"
+        required: true
+        type: string
 defaults:
   run:
     shell: bash
@@ -50,7 +54,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      SOURCE_COMMIT: ${{ github.sha }}
       SOURCE_REPOSITORY_URL: "https://github.com/${{ github.repository }}"
     strategy:
       matrix:
@@ -79,6 +82,8 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+          # Fork: build the input tag's code, not the ref this run was invoked on
+          ref: ${{ inputs.tag }}
 
       # Normalize the architecture string for use in paths and cache keys
       - name: Normalize architecture string
@@ -92,6 +97,10 @@ jobs:
       # Determine Source Version
       - name: Determine Source Version
         run: |
+          # The commit being built (the input tag, not the caller ref)
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          echo "SOURCE_COMMIT=${SOURCE_COMMIT}" | tee -a "${GITHUB_ENV}"
+
           # Get the Source Version for this release
           GIT_EXACT_TAG="$(git describe --tags --abbrev=0 --exact-match 2>/dev/null || true)"
           if [[ -n "${GIT_EXACT_TAG}" ]]; then
@@ -319,14 +328,10 @@ jobs:
       - name: Determine Base Tags
         env:
           BASE_IMAGE_TAG: "${{ matrix.base_image != 'debian' && format('-{0}', matrix.base_image) || '' }}"
-          REF_TYPE: ${{ github.ref_type }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          # Check which main tag we are going to build determined by ref_type
-          if [[ "${REF_TYPE}" == "tag" ]]; then
-            echo "BASE_TAGS=latest${BASE_IMAGE_TAG},${GITHUB_REF#refs/*/}${BASE_IMAGE_TAG}${BASE_IMAGE_TAG//-/,}" | tee -a "${GITHUB_ENV}"
-          elif [[ "${REF_TYPE}" == "branch" ]]; then
-            echo "BASE_TAGS=testing${BASE_IMAGE_TAG}" | tee -a "${GITHUB_ENV}"
-          fi
+          # Tag the multi-arch manifest as latest + the release version
+          echo "BASE_TAGS=latest${BASE_IMAGE_TAG},${RELEASE_TAG}${BASE_IMAGE_TAG}${BASE_IMAGE_TAG//-/,}" | tee -a "${GITHUB_ENV}"
 
       - name: Create manifest list, push it and extract digest SHA
         working-directory: ${{ runner.temp }}/digests
