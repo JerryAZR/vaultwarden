@@ -1,0 +1,85 @@
+name: Sync upstream releases
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+on:
+  schedule:
+    - cron: '23 4 * * *' # Daily, off the top of the hour
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  UPSTREAM_REPO: https://github.com/dani-garcia/vaultwarden.git
+
+jobs:
+  sync-tags:
+    name: Mirror new upstream release tags
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # Pushes made with GITHUB_TOKEN do not trigger other workflows, so the
+      # Release workflow would never run. A PAT (SYNC_TOKEN secret) is required.
+      - name: Verify SYNC_TOKEN is configured
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          if [[ -z "${SYNC_TOKEN}" ]]; then
+            echo "::error::SYNC_TOKEN secret is not set."
+            echo "::error::Create a fine-grained PAT (Repository access: Only select repositories => this repo; Permissions: Contents => Read and write) and add it as the SYNC_TOKEN secret."
+            echo "::error::Until then, release tags can be pushed manually from a local clone."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream "${UPSTREAM_REPO}"
+          git fetch --no-tags upstream '+refs/tags/*:refs/tags/*'
+
+      - name: Push new upstream release tags
+        run: |
+          # Release tags which already exist on this fork
+          # (lexical sort: `comm` requires collated input; -V ordering breaks on e.g. 1.9 vs 1.10)
+          git ls-remote --tags origin \
+            | grep -oE 'refs/tags/[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed 's|refs/tags/||' \
+            | LC_ALL=C sort > /tmp/origin-tags.txt || true
+
+          # Release tags available upstream
+          git tag --list \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | LC_ALL=C sort > /tmp/upstream-tags.txt || true
+
+          # Push only the newest upstream-only tag: a bounded release build per run.
+          # If several releases piled up, the daily schedule catches up one per day.
+          NEW_TAGS="$(comm -13 /tmp/origin-tags.txt /tmp/upstream-tags.txt | sort -V)"
+          if [[ -z "${NEW_TAGS}" ]]; then
+            echo "No new upstream release tags found"
+            exit 0
+          fi
+
+          TAG_TO_PUSH="$(tail -n 1 <<< "${NEW_TAGS}")"
+          {
+            echo "### Synced upstream release tag"
+            echo ""
+            echo "- \`${TAG_TO_PUSH}\`"
+            if [[ "$(wc -l <<< "${NEW_TAGS}")" -gt 1 ]]; then
+              echo ""
+              echo "${NEW_TAGS}" | head -n -1 | sed 's/^/- still pending: `/' | sed 's/$/`/'
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "Pushing tag ${TAG_TO_PUSH}"
+          git push origin "refs/tags/${TAG_TO_PUSH}:refs/tags/${TAG_TO_PUSH}"

@@ -2,8 +2,8 @@ name: Release
 permissions: {}
 
 concurrency:
-  # Apply concurrency control only on the upstream repo
-  group: ${{ github.repository == 'dani-garcia/vaultwarden' && format('{0}-{1}', github.workflow, github.ref) || github.run_id }}
+  # Fork: apply concurrency control on this repo (was: dani-garcia/vaultwarden)
+  group: ${{ github.repository == 'JerryAZR/vaultwarden' && format('{0}-{1}', github.workflow, github.ref) || github.run_id }}
   # Don't cancel other runs when creating a tag
   cancel-in-progress: ${{ github.ref_type == 'branch' }}
 
@@ -37,7 +37,8 @@ defaults:
 jobs:
   docker-build:
     name: Build Vaultwarden containers
-    if: ${{ github.repository == 'dani-garcia/vaultwarden' }}
+    # Fork: was gated to dani-garcia/vaultwarden, enable for this fork (GHCR only)
+    if: ${{ github.repository == 'JerryAZR/vaultwarden' }}
     environment: 
       name: release
       deployment: false
