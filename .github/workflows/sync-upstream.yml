@@ -23,6 +23,8 @@ jobs:
     name: Mirror new upstream release tags
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # SYNC_TOKEN is scoped to the `release` environment
+    environment: release
     permissions:
       contents: read
     steps:
@@ -33,8 +35,8 @@ jobs:
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           if [[ -z "${SYNC_TOKEN}" ]]; then
-            echo "::error::SYNC_TOKEN secret is not set."
-            echo "::error::Create a fine-grained PAT (Repository access: Only select repositories => this repo; Permissions: Contents => Read and write) and add it as the SYNC_TOKEN secret."
+            echo "::error::SYNC_TOKEN secret is not available."
+            echo "::error::Add it as a repository secret, or as a secret of the 'release' environment (which this job uses)."
             echo "::error::Until then, release tags can be pushed manually from a local clone."
             exit 1
           fi
