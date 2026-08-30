@@ -157,6 +157,22 @@ jobs:
         run: |
           echo "CONTAINER_REGISTRIES=${CONTAINER_REGISTRIES:+${CONTAINER_REGISTRIES},}${QUAY_REPO}" | tee -a "${GITHUB_ENV}"
 
+      # Login to Aliyun ACR (fork)
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: crpi-srx2ramomwgv74rw.cn-hangzhou.personal.cr.aliyuncs.com
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+        if: ${{ vars.ACR_REPO != '' }}
+
+      - name: Add registry for Aliyun ACR
+        if: ${{ vars.ACR_REPO != '' }}
+        env:
+          ACR_REPO: ${{ vars.ACR_REPO }}
+        run: |
+          echo "CONTAINER_REGISTRIES=${CONTAINER_REGISTRIES:+${CONTAINER_REGISTRIES},}${ACR_REPO}" | tee -a "${GITHUB_ENV}"
+
       - name: Configure build cache from/to
         env:
           GHCR_REPO: ${{ vars.GHCR_REPO }}
@@ -323,6 +339,22 @@ jobs:
           QUAY_REPO: ${{ vars.QUAY_REPO }}
         run: |
           echo "CONTAINER_REGISTRIES=${CONTAINER_REGISTRIES:+${CONTAINER_REGISTRIES},}${QUAY_REPO}" | tee -a "${GITHUB_ENV}"
+
+      # Login to Aliyun ACR (fork)
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: crpi-srx2ramomwgv74rw.cn-hangzhou.personal.cr.aliyuncs.com
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+        if: ${{ vars.ACR_REPO != '' }}
+
+      - name: Add registry for Aliyun ACR
+        if: ${{ vars.ACR_REPO != '' }}
+        env:
+          ACR_REPO: ${{ vars.ACR_REPO }}
+        run: |
+          echo "CONTAINER_REGISTRIES=${CONTAINER_REGISTRIES:+${CONTAINER_REGISTRIES},}${ACR_REPO}" | tee -a "${GITHUB_ENV}"
 
       # Determine Base Tags
       - name: Determine Base Tags
