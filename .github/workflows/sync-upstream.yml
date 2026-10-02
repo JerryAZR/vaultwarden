@@ -68,24 +68,21 @@ jobs:
             | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
             | LC_ALL=C sort > /tmp/upstream-tags.txt || true
 
-          # Push only the newest upstream-only tag: a bounded release build per run.
-          # If several releases piled up, the daily schedule catches up one per day.
-          NEW_TAGS="$(comm -13 /tmp/origin-tags.txt /tmp/upstream-tags.txt | sort -V)"
-          if [[ -z "${NEW_TAGS}" ]]; then
-            echo "No new upstream release tags found"
+          # Only follow NEW upstream releases — never backfill older tags.
+          # Backfilling would drag `latest` backwards onto old builds.
+          # Mirror upstream's newest tag only while it is not yet on this fork.
+          UPSTREAM_MAX="$(sort -V /tmp/upstream-tags.txt | tail -n 1)"
+          if grep -qxF "${UPSTREAM_MAX}" /tmp/origin-tags.txt; then
+            echo "Newest upstream release (${UPSTREAM_MAX}) is already mirrored"
             exit 0
           fi
 
-          TAG_TO_PUSH="$(tail -n 1 <<< "${NEW_TAGS}")"
+          TAG_TO_PUSH="${UPSTREAM_MAX}"
           echo "tag=${TAG_TO_PUSH}" >> "${GITHUB_OUTPUT}"
           {
             echo "### Synced upstream release tag"
             echo ""
             echo "- \`${TAG_TO_PUSH}\`"
-            if [[ "$(wc -l <<< "${NEW_TAGS}")" -gt 1 ]]; then
-              echo ""
-              echo "${NEW_TAGS}" | head -n -1 | sed 's/^/- still pending: `/' | sed 's/$/`/'
-            fi
           } >> "${GITHUB_STEP_SUMMARY}"
           echo "Pushing tag ${TAG_TO_PUSH}"
           git push origin "refs/tags/${TAG_TO_PUSH}:refs/tags/${TAG_TO_PUSH}"
@@ -103,5 +100,8 @@ jobs:
       attestations: write  # generate artifact attestations
       id-token: write      # OIDC token for Sigstore signing
     uses: ./.github/workflows/release.yml
+    # Fork: reusable workflows receive NO secrets by default; pass repo secrets
+    # (ACR_USERNAME/ACR_PASSWORD) through to the release pipeline
+    secrets: inherit
     with:
       tag: ${{ needs.sync-tags.outputs.tag }}
