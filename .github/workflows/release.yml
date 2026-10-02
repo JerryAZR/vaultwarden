@@ -217,6 +217,10 @@ jobs:
           pull: true
           source: .
           files: docker/docker-bake.hcl
+          # Fork: disable buildkit provenance attestations — ACR rejects the
+          # OCI empty-config manifests they push; the final manifest still
+          # gets a Sigstore attestation in the merge-manifests job
+          provenance: false
           targets: "${{ matrix.base_image }}-multi"
           set: |
             *.cache-from=${{ env.BAKE_CACHE_FROM }}
